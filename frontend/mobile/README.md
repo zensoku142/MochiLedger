@@ -1,5 +1,55 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
+## Project structure
+
+第一阶段的业务代码统一放在 `src` 下。目录只包含当前已经接入运行流程的文件，
+不会为了尚未开发的认证、图表或复杂设计系统提前创建空模块。
+
+```text
+src/
+├── app/
+│   ├── AppProviders.tsx
+│   ├── config.ts
+│   ├── queryClient.ts
+│   ├── theme.ts
+│   └── navigation/
+│       ├── assets/
+│       │   ├── tab-bottom-mask.png
+│       │   ├── tab-home.webp
+│       │   ├── tab-mine.webp
+│       │   └── tab-statistics.webp
+│       ├── AppTabBar.test.tsx
+│       ├── AppTabBar.tsx
+│       ├── MainTabNavigator.tsx
+│       ├── navigationTypes.ts
+│       └── RootNavigator.tsx
+├── features/
+│   ├── profile/
+│   │   └── screens/
+│   │       └── ProfileScreen.tsx
+│   ├── statistics/
+│   │   └── screens/
+│   │       └── StatisticsScreen.tsx
+│   └── transactions/
+│       └── screens/
+│           ├── HomeScreen.tsx
+│           ├── TransactionDetailScreen.tsx
+│           └── TransactionFormScreen.tsx
+└── shared/
+    ├── api/
+    │   ├── ApiError.ts
+    │   ├── apiClient.test.ts
+    │   └── apiClient.ts
+    └── components/
+        ├── Screen.test.tsx
+        └── Screen.tsx
+```
+
+- `app/` 负责应用启动、全局配置、服务端数据缓存和导航装配，不放具体页面业务。
+- `features/` 按用户可见功能组织页面；某个功能独有的代码应继续留在自己的目录中。
+- `shared/` 只保存已经被多个功能共用且职责稳定的接口与组件，避免过早建设通用框架。
+- 根目录的 `App.tsx` 只启动 `AppProviders`；自动化测试分别位于 `__tests__/` 和被测模块附近。
+
 # Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
