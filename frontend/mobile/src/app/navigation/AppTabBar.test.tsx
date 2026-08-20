@@ -1,6 +1,6 @@
 // ==================== 底部导航测试 ====================
 // 测试用假的导航状态代替手机模拟器，验证胶囊不只外观正确，也能按约定切换页面。
-// 重点防止三种旧问题再次出现：动画前提前跳页、底色滑出边界、重复打开当前页面。
+// 重点防止三种旧问题再次出现：点击后页面仍有延迟、底色滑出边界、重复打开当前页面。
 
 import type {BottomTabBarProps} from '@react-navigation/bottom-tabs';
 import React from 'react';
@@ -56,7 +56,7 @@ beforeEach(() => {
   mockNavigate.mockClear();
   finishAnimation = undefined;
 
-  // 测试主动决定动画何时结束，才能证明底色还在移动时不会提前切换页面。
+  // 测试主动决定动画何时结束，才能证明页面立即切换，动画结束后也不会重复导航。
   jest.spyOn(Animated, 'parallel').mockImplementation(
     () =>
       ({
@@ -73,7 +73,7 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-test('激活未选中的 Tab 会在吸附动画完成后切换路由', async () => {
+test('激活未选中的 Tab 会立即切换路由并继续吸附动画', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer;
 
   await ReactTestRenderer.act(() => {
@@ -89,14 +89,14 @@ test('激活未选中的 Tab 会在吸附动画完成后切换路由', async () 
     target: 'statistics-key',
     canPreventDefault: true,
   });
-  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(mockNavigate).toHaveBeenCalledWith('Statistics', undefined);
 
-  // finished=true 代表动画没有被新的触摸打断，此时才允许真正显示统计页。
+  // 动画结束只更新指示器位置，不能再次打开同一个页面。
   ReactTestRenderer.act(() => {
     finishAnimation?.({finished: true});
   });
 
-  expect(mockNavigate).toHaveBeenCalledWith('Statistics', undefined);
+  expect(mockNavigate).toHaveBeenCalledTimes(1);
 });
 
 test('激活已选中的 Tab 不会重复导航', async () => {

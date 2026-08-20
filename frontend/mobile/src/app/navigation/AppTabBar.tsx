@@ -30,12 +30,6 @@ const tabIcons: Record<keyof MainTabParamList, ImageSourcePropType> = {
   Profile: require('./assets/tab-mine.webp'),
 };
 
-// 全宽蒙版是 4×256 的透明 PNG：顶部完全透明，底部最多覆盖约 95%，不会变成实心底色。
-// 因此列表滑到最底部时仍能透出约 5% 内容，同时比上一版更朦胧，不需要重新启用会产生马赛克的实时模糊。
-// 参考图主要通过浅色透明层降低底部内容的对比度，并没有明显的粗颗粒模糊。
-// Android 原生渐进模糊会先缩小画面再放大，文字边缘容易出现马赛克，因此这里只使用原尺寸透明度渐变。
-const tabBarMask: ImageSourcePropType = require('./assets/tab-bottom-mask.png');
-
 // 最新 1272×345 参考图归一化到 390×106 后，胶囊约高 58，图标框约 26×20，文字约 10。
 // 各 WebP 使用 contain 保留自身比例，因此账本窄、柱状图宽、层叠图接近正方形。
 const TAB_BAR_HEIGHT = 58;
@@ -43,9 +37,12 @@ const TAB_ICON_WIDTH = 26;
 const TAB_ICON_HEIGHT = 20;
 const TAB_LABEL_SIZE = 10;
 
-// 蒙版需要比 Tab 本身向上多覆盖约 96 dp，才能在列表卡片进入胶囊前就开始渐隐。
-// 该空间只扩大绝对定位根层，不参与页面布局，因此不会把 Tab 或内容向上推。
-const BOTTOM_MASK_TOP_EXTENSION = 96;
+// 红框参考要求列表从胶囊下半部分才开始变淡。
+// 胶囊上方有 16 dp 间距，再加一半胶囊高度，正好得到屏幕上的胶囊垂直中线。
+const BOTTOM_MASK_START_OFFSET = theme.spacing.lg + TAB_BAR_HEIGHT / 2;
+
+// 渐变从中线前 8 dp 开始，在中线正好达到 65%，所以起点明显但没有透明度跳变。
+const BOTTOM_MASK_TRANSITION_HEIGHT = theme.spacing.sm;
 
 // 胶囊自身保留 4 dp 内边距；选中底色每侧再内收 2 dp，匹配参考图的细小白色间隔。
 const CAPSULE_CONTENT_PADDING = theme.spacing.xs;
@@ -54,14 +51,17 @@ const INDICATOR_HORIZONTAL_INSET = theme.spacing.xs / 2;
 // 手指移动超过 4 dp 且主要方向为横向时才接管手势，避免轻微抖动把普通点击误判成拖动。
 const DRAG_ACTIVATION_DISTANCE = theme.spacing.xs;
 
-// 弹簧参数让释放后的指示器快速吸附又不会僵硬；动画结束回调才会真正提交路由。
+// 弹簧参数让释放后的指示器快速吸附又不会僵硬；页面会立即切换，不需要等待动画结束。
+// 禁止越过目标可避免滑块在边界闪一下；不占用交互队列可减少新页面渲染与吸附动画互相等待。
 const INDICATOR_SPRING_CONFIG = {
   damping: 22,
   stiffness: 260,
   mass: 0.8,
+  overshootClamping: true,
+  isInteraction: false,
 } as const;
 
-// 正常选中底色约高 48 dp；放大到 1.18 后约为 57 dp，会比 56 dp 导航胶囊上下各探出一点。
+// 正常选中底色约高 50 dp；放大到 1.18 后约为 59 dp，会比 58 dp 导航胶囊上下各探出一点。
 // 外层没有 overflow:hidden，因此溢出部分可见，同时幅度仍不足以遮挡相邻 Tab 的文字。
 const INDICATOR_ACTIVE_SCALE = 1.18;
 
@@ -140,6 +140,8 @@ export function AppTabBar({
 
   // ref（不会引起页面重画的小记事本）保存手指每一帧的位置，避免拖动时不停重画整条导航栏。
   const visualPositionRef = useRef(state.index);
+  // 目标位置单独保存；页面立即切换后，外部导航状态会随之更新，但不能把同一段动画重新启动。
+  const indicatorTargetIndexRef = useRef(state.index);
   const dragStartPositionRef = useRef(state.index);
   const isDraggingRef = useRef(false);
   const indicatorAnimationRef = useRef<Animated.CompositeAnimation | null>(
@@ -149,6 +151,9 @@ export function AppTabBar({
     useRef<Animated.CompositeAnimation | null>(null);
   const hasDraggedRef = useRef(false);
   const isVerticalGestureRef = useRef(false);
+  // 旧的原生动画停止后才知道滑块真实位置；在结果回来前，先暂存最新拖动距离，避免起点中途变化。
+  const isDragStartReadyRef = useRef(true);
+  const pendingDragDistanceRef = useRef(0);
 
   // measureInWindow 会保存胶囊相对屏幕的左边界，供普通点击把 pageX 精确换算成三格。
   const capsuleRef = useRef<View | null>(null);
@@ -166,11 +171,12 @@ export function AppTabBar({
 
   // ---------- 吸附动画 ----------
   // 新动画开始前先停掉旧动画，再同时完成“滑到目标格”和“缩回正常大小”。
-  // 两项都完整结束后才切换页面，用户快速改选时就不会误开上一次选择的页面。
+  // 这段动画只负责视觉反馈；页面切换由 settleToTab 在用户确认选择时立即完成。
   const animateIndicatorTo = useCallback(
-    (targetIndex: number, handleFinished?: () => void) => {
+    (targetIndex: number) => {
       indicatorAnimationRef.current?.stop();
       indicatorScaleAnimationRef.current?.stop();
+      indicatorTargetIndexRef.current = targetIndex;
       setPreviewIndex(targetIndex);
 
       const animation = Animated.parallel([
@@ -188,13 +194,15 @@ export function AppTabBar({
 
       indicatorAnimationRef.current = animation;
       animation.start(({finished}) => {
-        if (indicatorAnimationRef.current === animation) {
+        const isCurrentAnimation = indicatorAnimationRef.current === animation;
+
+        if (isCurrentAnimation) {
           indicatorAnimationRef.current = null;
         }
 
-        if (finished) {
+        // 已被新触摸替换的旧动画即使晚到，也不能把当前位置改回旧目标。
+        if (finished && isCurrentAnimation) {
           visualPositionRef.current = targetIndex;
-          handleFinished?.();
         }
       });
     },
@@ -219,9 +227,30 @@ export function AppTabBar({
     });
   }, [indicatorScale]);
 
+  // ---------- 拖动位置更新 ----------
+  // 所有拖动帧走同一条换算流程；旧动画停止稍慢时，只保留最后一次手指距离，不绘制错误的中间位置。
+  const applyDragDistance = useCallback(
+    (dragDistance: number) => {
+      const nextPosition = calculateDragPosition(
+        dragStartPositionRef.current,
+        dragDistance,
+        segmentWidth,
+        tabCount,
+      );
+      const nextPreviewIndex = getNearestTabIndex(nextPosition, tabCount);
+
+      visualPositionRef.current = nextPosition;
+      indicatorPosition.setValue(nextPosition);
+      setPreviewIndex(currentIndex =>
+        currentIndex === nextPreviewIndex ? currentIndex : nextPreviewIndex,
+      );
+    },
+    [indicatorPosition, segmentWidth, tabCount],
+  );
+
   // ---------- 提交选择 ----------
   // 点击或松手后先询问导航监听方是否允许切换，再让底色吸附到最终位置。
-  // 目标不同、切换未被阻止并且动画没有中断时，才真正显示新页面。
+  // 目标不同且切换未被阻止时立即显示新页面，底色动画在新页面显示后继续完成。
   const settleToTab = useCallback(
     (requestedIndex: number) => {
       const targetIndex = getNearestTabIndex(requestedIndex, tabCount);
@@ -243,11 +272,11 @@ export function AppTabBar({
       const finalIndex = shouldNavigate ? targetIndex : state.index;
 
       isDraggingRef.current = false;
-      animateIndicatorTo(finalIndex, () => {
-        if (shouldNavigate) {
-          navigation.navigate(targetRoute.name, targetRoute.params);
-        }
-      });
+      animateIndicatorTo(finalIndex);
+
+      if (shouldNavigate) {
+        navigation.navigate(targetRoute.name, targetRoute.params);
+      }
     },
     [
       animateIndicatorTo,
@@ -261,6 +290,8 @@ export function AppTabBar({
   // 手势被系统取消时不改页面，指示器回到导航器当前确认的 Tab。
   const cancelDrag = useCallback(() => {
     isDraggingRef.current = false;
+    isDragStartReadyRef.current = false;
+    pendingDragDistanceRef.current = 0;
     animateIndicatorTo(state.index);
   }, [animateIndicatorTo, state.index]);
 
@@ -279,13 +310,27 @@ export function AppTabBar({
           isDraggingRef.current = true;
           hasDraggedRef.current = false;
           isVerticalGestureRef.current = false;
-          indicatorAnimationRef.current?.stop();
+          isDragStartReadyRef.current = false;
+          pendingDragDistanceRef.current = 0;
+
+          const runningAnimation = indicatorAnimationRef.current;
+          indicatorAnimationRef.current = null;
+          runningAnimation?.stop();
           enlargeIndicator();
 
           // 如果用户在吸附动画尚未结束时再次按住，从屏幕上的当前位置继续，不会跳回旧格。
           indicatorPosition.stopAnimation(currentPosition => {
+            if (!isDraggingRef.current) {
+              return;
+            }
+
             visualPositionRef.current = currentPosition;
             dragStartPositionRef.current = currentPosition;
+            isDragStartReadyRef.current = true;
+
+            if (pendingDragDistanceRef.current !== 0) {
+              applyDragDistance(pendingDragDistanceRef.current);
+            }
           });
         },
         onPanResponderMove: (_, gestureState) => {
@@ -309,21 +354,11 @@ export function AppTabBar({
           }
 
           hasDraggedRef.current = true;
-          const nextPosition = calculateDragPosition(
-            dragStartPositionRef.current,
-            gestureState.dx,
-            segmentWidth,
-            tabCount,
-          );
-          const nextPreviewIndex = getNearestTabIndex(nextPosition, tabCount);
+          pendingDragDistanceRef.current = gestureState.dx;
 
-          visualPositionRef.current = nextPosition;
-          indicatorPosition.setValue(nextPosition);
-          setPreviewIndex(currentIndex =>
-            currentIndex === nextPreviewIndex
-              ? currentIndex
-              : nextPreviewIndex,
-          );
+          if (isDragStartReadyRef.current) {
+            applyDragDistance(gestureState.dx);
+          }
         },
         onPanResponderRelease: (event, gestureState) => {
           if (isVerticalGestureRef.current) {
@@ -332,8 +367,19 @@ export function AppTabBar({
           }
 
           if (hasDraggedRef.current) {
+            const releasePosition = isDragStartReadyRef.current
+              ? visualPositionRef.current
+              : calculateDragPosition(
+                  state.index,
+                  gestureState.dx,
+                  segmentWidth,
+                  tabCount,
+                );
+            isDraggingRef.current = false;
+            isDragStartReadyRef.current = false;
+            pendingDragDistanceRef.current = 0;
             settleToTab(
-              getNearestTabIndex(visualPositionRef.current, tabCount),
+              getNearestTabIndex(releasePosition, tabCount),
             );
             return;
           }
@@ -367,6 +413,7 @@ export function AppTabBar({
       cancelDrag,
       enlargeIndicator,
       indicatorPosition,
+      applyDragDistance,
       segmentWidth,
       settleToTab,
       state.index,
@@ -381,7 +428,10 @@ export function AppTabBar({
       return;
     }
 
-    if (visualPositionRef.current === state.index) {
+    if (
+      visualPositionRef.current === state.index ||
+      indicatorTargetIndexRef.current === state.index
+    ) {
       setPreviewIndex(state.index);
       return;
     }
@@ -419,16 +469,9 @@ export function AppTabBar({
       style={styles.safeArea}
       edges={['right', 'bottom', 'left']}>
       <View pointerEvents="box-none" style={styles.barArea}>
-        <Image
-          resizeMode="stretch"
-          source={tabBarMask}
-          style={[
-            styles.maskImage,
-            {
-              top: -BOTTOM_MASK_TOP_EXTENSION,
-              bottom: -bottomInset,
-            },
-          ]}
+        <View
+          pointerEvents="none"
+          style={[styles.maskArea, {bottom: -bottomInset}]}
         />
         <View
           {...panResponder.panHandlers}
@@ -534,7 +577,6 @@ const styles = StyleSheet.create({
     // RNSScreen 在 Android 使用独立原生绘制层，蒙版必须高于它才能真正盖住列表内容。
     // 这里只提升透明根层的绘制顺序，不再执行会扩散亮色像素的实时模糊，因此不会产生此前的白色眩光。
     elevation: 10,
-    paddingTop: BOTTOM_MASK_TOP_EXTENSION,
     backgroundColor: 'transparent',
   },
   barArea: {
@@ -546,13 +588,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingBottom: theme.spacing.sm,
   },
-  maskImage: {
+  maskArea: {
     position: 'absolute',
+    // React Native 0.86 由原生视图直接绘制一整条线性渐变，不再拉伸 PNG 或叠加实色层。
+    // 三个颜色使用与页面相同的 #F4F4F4，只连续改变透明度，因此中线没有硬边或亮色带。
+    top: BOTTOM_MASK_START_OFFSET - BOTTOM_MASK_TRANSITION_HEIGHT,
     right: 0,
     left: 0,
-    // Android Fabric 会保留这张 4 px 资源的固有宽度；必须显式铺满，否则蒙版只剩屏幕左侧一条细线。
-    width: '100%',
-    // 胶囊位于同一容器内并在图片之后渲染，因此它保持清晰，蒙版只处理下面的列表内容。
+    experimental_backgroundImage: `linear-gradient(to bottom, ${theme.colors.navigationMaskTransparent} 0px, ${theme.colors.navigationMaskStart} ${BOTTOM_MASK_TRANSITION_HEIGHT}px, ${theme.colors.navigationMaskEnd} 100%)`,
     zIndex: 0,
   },
   capsule: {
@@ -561,7 +604,8 @@ const styles = StyleSheet.create({
     height: TAB_BAR_HEIGHT,
     flexDirection: 'row',
     padding: theme.spacing.xs,
-    backgroundColor: theme.colors.navigationSurface,
+    // 胶囊使用全局纯白透明底色；后方遮罩使用页面同色连续渐变，不再有分层接缝。
+    backgroundColor: theme.colors.buttonBackground,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.navigationBorder,
     borderRadius: theme.radius.lg + theme.spacing.sm,
@@ -569,7 +613,9 @@ const styles = StyleSheet.create({
     shadowOffset: {width: 0, height: theme.spacing.xs},
     shadowOpacity: 0.06,
     shadowRadius: theme.spacing.sm,
-    elevation: 2,
+    // Android 的 elevation 会让半透明圆角中央重复混合，产生只出现在矩形区域的亮色横线。
+    // iOS 继续使用上面的 shadow 配置；Android 关闭 elevation 后保留真实透明度并消除接缝。
+    elevation: 0,
   },
   pressable: {
     flex: 1,
