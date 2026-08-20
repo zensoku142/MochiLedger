@@ -1,10 +1,3 @@
-# Add project specific ProGuard rules here.
-# By default, the flags in this file are appended to flags specified
-# in /usr/local/Cellar/android-sdk/24.3.3/tools/proguard/proguard-android.txt
-# You can edit the include path and order by changing the proguardFiles
-# directive in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# Add any project specific keep options here:
+# ==================== Android 代码压缩规则 ====================
+# Proguard（压缩并改写原生代码的工具）目前在 app/build.gradle 中关闭，因此这里暂时没有规则。
+# 将来开启压缩时，第三方库必须保留的类写在这里，避免正式包因类名被改写而崩溃。

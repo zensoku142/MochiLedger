@@ -1,4 +1,5 @@
-# Resolve react_native_pods.rb with node to allow for hoisting
+# ==================== iOS 原生依赖 ====================
+# pnpm 可能把依赖提升到不同目录，所以先让 Node 找到 React Native 自带的安装脚本。
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(
     "react-native/scripts/react_native_pods.rb",
@@ -8,6 +9,7 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# USE_FRAMEWORKS 是构建环境传入的开关；有值时按指定方式连接 iOS Framework（原生功能包）。
 linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
@@ -15,20 +17,22 @@ if linkage != nil
 end
 
 target 'MochiLedger' do
+  # 自动收集 JavaScript 依赖中包含的 iOS 原生模块，避免逐个手工登记。
   config = use_native_modules!
 
   use_react_native!(
     :path => config[:reactNativePath],
-    # An absolute path to your application root.
+    # CocoaPods（iOS 原生依赖安装工具）需要绝对项目路径，才能找到 package.json 和资源。
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
   post_install do |installer|
+    # 所有 Pod 安装结束后执行 React Native 官方收尾步骤，使 Xcode 编译设置保持兼容。
     react_native_post_install(
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
+      # ccache 会复用旧编译结果；当前保持关闭，避免不同电脑上的缓存差异干扰排错。
     )
   end
 end

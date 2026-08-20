@@ -1,77 +1,63 @@
+// ==================== Android 应用模块 ====================
+// 三个插件分别负责生成安装包、编译 Kotlin 原生代码和接入 React Native 构建流程。
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-/**
- * This is the configuration block to customize your React Native Android app.
- * By default you don't need to apply any configuration, just uncomment the lines you need.
- */
+// ---------- React Native 构建 ----------
+// 当前只启用原生依赖自动连接，其余路径和打包选项继续使用官方默认值。
 react {
-    /* Folders */
-    //   The root of your project, i.e. where "package.json" lives. Default is '../..'
+    // 文件夹位置：下面保留官方示例，只有目录结构改变后才需要取消注释。
+    // 项目根目录，也就是 package.json 所在位置；默认值为 ../..。
     // root = file("../../")
-    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
+    // react-native 软件包目录；默认值为 ../../node_modules/react-native。
     // reactNativeDir = file("../../node_modules/react-native")
-    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
+    // Codegen（根据类型说明生成原生连接代码的工具）目录；默认值如下。
     // codegenDir = file("../../node_modules/@react-native/codegen")
-    //   The cli.js file which is the React Native CLI entrypoint. Default is ../../node_modules/react-native/cli.js
+    // React Native 命令行入口；默认值如下。
     // cliFile = file("../../node_modules/react-native/cli.js")
 
-    /* Variants */
-    //   The list of variants to that are debuggable. For those we're going to
-    //   skip the bundling of the JS bundle and the assets. Default is "debug", "debugOptimized".
-    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
+    // 可调试版本不会把 JavaScript 和图片提前打进安装包，而是从开发服务器读取。
+    // 若以后增加 lite 或 prod 等版本名称，必须把对应调试版本补到下面的列表。
     // debuggableVariants = ["liteDebug", "liteDebugOptimized", "prodDebug", "prodDebugOptimized"]
 
-    /* Bundling */
-    //   A list containing the node command and its flags. Default is just 'node'.
+    // 打包选项：当前全部沿用默认值，示例只用于确有自定义需求时参考。
+    // 执行 JavaScript 工具的 Node 命令和附加参数，默认只有 node。
     // nodeExecutableAndArgs = ["node"]
     //
-    //   The command to run when bundling. By default is 'bundle'
+    // 打包命令默认是 bundle。
     // bundleCommand = "ram-bundle"
     //
-    //   The path to the CLI configuration file. Default is empty.
+    // 命令行配置文件路径默认留空。
     // bundleConfig = file(../rn-cli.config.js)
     //
-    //   The name of the generated asset file containing your JS bundle
+    // 生成的 JavaScript 资源文件名称。
     // bundleAssetName = "MyApplication.android.bundle"
     //
-    //   The entry file for bundle generation. Default is 'index.android.js' or 'index.js'
+    // 打包入口默认查找 index.android.js 或 index.js。
     // entryFile = file("../js/MyApplication.android.js")
     //
-    //   A list of extra flags to pass to the 'bundle' commands.
-    //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
+    // 传给打包命令的额外参数，当前不需要。
     // extraPackagerArgs = []
 
-    /* Hermes Commands */
-    //   The hermes compiler command to run. By default it is 'hermesc'
+    // Hermes（手机中执行 JavaScript 的引擎）编译器默认使用 hermesc。
     // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
     //
-    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+    // 默认参数会优化代码并生成便于定位错误位置的映射文件。
     // hermesFlags = ["-O", "-output-source-map"]
 
-    /* Autolinking */
+    // 自动连接会扫描依赖并把需要的 Android 原生模块加入安装包。
     autolinkLibrariesWithApp()
 }
 
-/**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
- */
+// Proguard（压缩并改写原生代码的工具）暂时关闭，避免早期阶段因缺少保留规则造成正式包崩溃。
 def enableProguardInReleaseBuilds = false
 
-/**
- * The preferred build flavor of JavaScriptCore (JSC)
- *
- * For example, to use the international variant, you can use:
- * `def jscFlavor = io.github.react-native-community:jsc-android-intl:2026004.+`
- *
- * The international variant includes ICU i18n library and necessary data
- * allowing to use e.g. `Date.toLocaleString` and `String.localeCompare` that
- * give correct results when using with locales other than en-US. Note that
- * this variant is about 6MiB larger per architecture than default.
- */
+// Hermes 被关闭时才改用 JSC（另一种 JavaScript 执行引擎）。
+// 当前选择体积较小的普通版本；带完整多语言日期规则的 intl 版本每种处理器约多 6 MiB。
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// ==================== 安装包设置 ====================
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -86,6 +72,7 @@ android {
         versionName "1.0"
     }
     signingConfigs {
+        // debug.keystore 只是公开的本地调试证书，不能当作正式发布身份使用。
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -98,8 +85,8 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
+            // 当前项目尚未配置正式证书，所以 release 暂借调试证书才能在本机安装。
+            // 真正上架前必须替换成私密正式证书，不能用这个包发布到应用商店。
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
@@ -108,7 +95,8 @@ android {
 }
 
 dependencies {
-    // The version of react-native is set by the React Native Gradle Plugin
+    // ---------- 应用运行依赖 ----------
+    // React Native 版本由上方插件根据 package.json 统一决定，这里不再手写另一份版本号。
     implementation("com.facebook.react:react-android")
 
     if (hermesEnabled.toBoolean()) {
