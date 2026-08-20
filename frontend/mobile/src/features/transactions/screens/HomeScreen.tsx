@@ -162,10 +162,13 @@ const styles = StyleSheet.create({
   transactionMeta: {
     color: theme.colors.textSecondary,
     fontSize: theme.spacing.md,
+    // Quicksand 只接管日期和时间中的数字；分类中文缺少对应字形时，系统会自动选择中文字体补齐。
+    fontFamily: theme.fonts.number,
   },
   transactionAmount: {
     fontSize: theme.spacing.lg,
-    fontWeight: '600',
+    // 列表金额按 iCost 的普通数字层级使用圆润的 Quicksand Bold，不与重点大金额抢层次。
+    fontFamily: theme.fonts.number,
   },
   incomeAmount: {
     color: theme.colors.primary,

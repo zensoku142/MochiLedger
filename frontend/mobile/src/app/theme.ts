@@ -24,6 +24,12 @@ export const theme = {
     border: '#E3E6E4',
     danger: '#C94747',
   },
+  fonts: {
+    // React Native 使用字体文件名（不含扩展名）查找安装包内资源；两个名称必须与 assets/fonts 保持一致。
+    // displayAmount 用于首页总额等重点大数字，number 用于列表金额、日期时间和其他普通数字。
+    displayAmount: 'ICDIN-Bold',
+    number: 'Quicksand-Bold',
+  },
   spacing: {
     xs: 4,
     sm: 8,

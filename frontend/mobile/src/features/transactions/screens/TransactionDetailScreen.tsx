@@ -29,5 +29,7 @@ export function TransactionDetailScreen({
 const styles = StyleSheet.create({
   identifier: {
     color: theme.colors.textSecondary,
+    // 账目编号中的英文和数字使用 Quicksand，前面的中文说明仍由系统中文字体显示。
+    fontFamily: theme.fonts.number,
   },
 });

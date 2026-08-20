@@ -71,6 +71,12 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    sourceSets {
+        main {
+            // 直接把 mobile/assets 打进安装包，字体仍只维护一份，不复制到 Android 专用目录。
+            assets.srcDirs += ["../../assets"]
+        }
+    }
     signingConfigs {
         // debug.keystore 只是公开的本地调试证书，不能当作正式发布身份使用。
         debug {
