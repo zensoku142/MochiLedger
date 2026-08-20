@@ -67,6 +67,12 @@ yarn-error.log
 # testing
 coverage/
 
+# 本目录只用于个人练习，不属于 MochiLedger 产品代码。
+/frontend/provider-practice/
+
+# 视觉验收过程记录保留在本机，不随产品代码提交。
+/frontend/mobile/design-qa.md
+
 # Java / Spring Boot
 target/
 *.class
