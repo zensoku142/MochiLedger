@@ -144,3 +144,25 @@ test('释放时吸附到最近的 Tab', () => {
   expect(getNearestTabIndex(0.5, 3)).toBe(1);
   expect(getNearestTabIndex(1.6, 3)).toBe(2);
 });
+
+test('吸附动画不会越过目标或阻塞页面切换', async () => {
+  const springSpy = jest.spyOn(Animated, 'spring');
+  let renderer: ReactTestRenderer.ReactTestRenderer;
+
+  await ReactTestRenderer.act(() => {
+    renderer = ReactTestRenderer.create(<AppTabBar {...createTabBarProps()} />);
+  });
+
+  ReactTestRenderer.act(() => {
+    renderer!.root.findByProps({accessibilityLabel: '统计'}).props.onPress();
+  });
+
+  expect(springSpy).toHaveBeenCalledTimes(2);
+  expect(springSpy).toHaveBeenCalledWith(
+    expect.any(Animated.Value),
+    expect.objectContaining({
+      overshootClamping: true,
+      isInteraction: false,
+    }),
+  );
+});
